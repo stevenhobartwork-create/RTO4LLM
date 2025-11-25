@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Unified Optimizer - Auto-detecting read/write optimization
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Usage: cat file | o [--write] > output
+#        o file > output
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="$SCRIPT_DIR/.state"
+LOG_FILE="$STATE_DIR/optimizer.log"
+
+mkdir -p "$STATE_DIR"
+
+# Configuration
+NEVER_OPTIMIZE_BELOW=1024
+ATTEMPT_ALWAYS_ABOVE=10240
+CHUNK_VALIDATION_ABOVE=51200
+
+# Auto-detect mode (read or write)
+MODE="read"
+[[ "${1:-}" == "--write" ]] && { MODE="write"; shift; }
+
+# Get input
+if [[ -n "${1:-}" ]]; then
+    INPUT_FILE="$1"
+    CONTENT=$(<"$INPUT_FILE")
+else
+    CONTENT=$(cat)
+    INPUT_FILE="<stdin>"
+fi
+
+INPUT_SIZE=${#CONTENT}
+START_TIME=$(date +%s%3N)
+
+log_stderr() {
+    echo "[OPTIMIZER] $*" >&2
+}
+
+log_file() {
+    echo "$(date -Iseconds)|$INPUT_FILE|$*" >> "$LOG_FILE"
+}
+
+detect_type() {
+    local content="$1"
+    
+    if [[ "$INPUT_FILE" == *.log ]] || echo "$content" | head -5 | grep -qE '^\[.*\] \['; then
+        echo "tui_log"
+    elif [[ "$INPUT_FILE" == *.sh ]] || echo "$content" | head -1 | grep -q '^#!/.*sh'; then
+        echo "bash"
+    elif [[ "$INPUT_FILE" == *.md ]]; then
+        echo "markdown"
+    else
+        echo "generic"
+    fi
+}
+
+FILE_TYPE=$(detect_type "$CONTENT")
+
+if [[ $INPUT_SIZE -lt $NEVER_OPTIMIZE_BELOW ]]; then
+    log_stderr "File too small ($INPUT_SIZE bytes), passing through"
+    echo "$CONTENT"
+    exit 0
+fi
+
+select_strategy() {
+    local ftype="$1"
+    local mode="$2"
+    
+    if [[ "$mode" == "read" ]]; then
+        case "$ftype" in
+            tui_log) echo "RO/TL/keyonly" ;;
+            bash) echo "RO/G/decomment" ;;
+            markdown) echo "RO/G/compact" ;;
+            *) echo "RO/G/trim" ;;
+        esac
+    else
+        case "$ftype" in
+            tui_log) echo "WO/tui_compact" ;;
+            bash) echo "WO/bash_format" ;;
+            *) echo "WO/plain" ;;
+        esac
+    fi
+}
+
+STRATEGY=$(select_strategy "$FILE_TYPE" "$MODE")
+OPTIMIZER="$SCRIPT_DIR/$STRATEGY"
+
+log_stderr "File: $INPUT_FILE ($INPUT_SIZE bytes)"
+log_stderr "Type: $FILE_TYPE"
+log_stderr "Mode: $MODE"
+log_stderr "Strategy: $STRATEGY"
+
+if [[ -x "$OPTIMIZER" ]]; then
+    OUTPUT=$(echo "$CONTENT" | "$OPTIMIZER")
+    OUTPUT_SIZE=${#OUTPUT}
+    SAVED=$((INPUT_SIZE - OUTPUT_SIZE))
+    SAVED_PCT=0
+    [[ $INPUT_SIZE -gt 0 ]] && SAVED_PCT=$((SAVED * 100 / INPUT_SIZE))
+    
+    END_TIME=$(date +%s%3N)
+    ELAPSED=$((END_TIME - START_TIME))
+    
+    log_stderr "Output: $OUTPUT_SIZE bytes"
+    log_stderr "Saved: $SAVED bytes ($SAVED_PCT%)"
+    log_stderr "Time: ${ELAPSED}ms"
+    
+    log_file "$STRATEGY|$INPUT_SIZE|$OUTPUT_SIZE|$SAVED|$SAVED_PCT|$ELAPSED|0"
+    
+    echo "$OUTPUT"
+else
+    log_stderr "Strategy not found: $STRATEGY (passing through)"
+    log_file "none|$INPUT_SIZE|$INPUT_SIZE|0|0|0|0"
+    echo "$CONTENT"
+fi

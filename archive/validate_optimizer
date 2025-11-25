@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Optimizer Validator - Test all optimizers on random files
+# Author: claude, 2025-11-25T20:00:00Z, v1.0.0
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEST_DIR="$SCRIPT_DIR/TEST"
+LOG_FILE="$TEST_DIR/validation_$(date +%Y%m%d_%H%M%S).log"
+
+mkdir -p "$TEST_DIR"
+
+echo "=== OPTIMIZER VALIDATION FRAMEWORK ===" | tee "$LOG_FILE"
+echo "Started: $(date -Iseconds)" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+# Counters
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+TOTAL_SAVED=0
+TOTAL_INPUT=0
+
+# Test single optimizer on single file
+test_optimizer() {
+    local optimizer="$1"
+    local test_file="$2"
+    local opt_name=$(basename "$optimizer")
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    
+    echo -n "Testing $opt_name on $(basename "$test_file")... " | tee -a "$LOG_FILE"
+    
+    # Get file size
+    local input_size=$(wc -c < "$test_file")
+    TOTAL_INPUT=$((TOTAL_INPUT + input_size))
+    
+    # Run optimizer
+    local output_file="$TEST_DIR/${opt_name}_$(basename "$test_file").opt"
+    if cat "$test_file" | "$optimizer" > "$output_file" 2>/dev/null; then
+        local output_size=$(wc -c < "$output_file")
+        local saved=$((input_size - output_size))
+        local saved_pct=0
+        [[ $input_size -gt 0 ]] && saved_pct=$((saved * 100 / input_size))
+        
+        TOTAL_SAVED=$((TOTAL_SAVED + saved))
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+        
+        echo "PASS (saved $saved bytes, $saved_pct%)" | tee -a "$LOG_FILE"
+        return 0
+    else
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        echo "FAIL (optimizer error)" | tee -a "$LOG_FILE"
+        return 1
+    fi
+}
+
+# Find all optimizers
+echo "Discovering optimizers..." | tee -a "$LOG_FILE"
+OPTIMIZERS=$(find "$SCRIPT_DIR/RO" "$SCRIPT_DIR/WO" -type f -executable 2>/dev/null || true)
+OPT_COUNT=$(echo "$OPTIMIZERS" | wc -w)
+echo "Found $OPT_COUNT optimizers" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+# Find test files
+echo "Searching for test files..." | tee -a "$LOG_FILE"
+
+# Create sample test files if none exist
+if [[ ! -f "$TEST_DIR/sample.log" ]]; then
+    cat > "$TEST_DIR/sample.log" <<'EOF'
+[2025-11-25T20:00:00.000] [UI] ┌────────────┐
+[2025-11-25T20:00:00.001] [UI] │   MENU     │
+[2025-11-25T20:00:00.002] [UI] └────────────┘
+[2025-11-25T20:00:00.123] [KEY] UP
+[2025-11-25T20:00:01.456] [CMD] ./module.sh
+[2025-11-25T20:00:02.789] [ERR] File not found
+[2025-11-25T20:00:03.000] [UI] Press any key...
+EOF
+fi
+
+if [[ ! -f "$TEST_DIR/sample.sh" ]]; then
+    cat > "$TEST_DIR/sample.sh" <<'EOF'
+#!/bin/bash
+# Sample script for testing
+# Author: claude
+
+# Main function
+main() {
+    # Print hello
+    echo "Hello, World!"
+    
+    # Do something
+    return 0
+}
+
+main "$@"
+EOF
+fi
+
+if [[ ! -f "$TEST_DIR/sample.md" ]]; then
+    cat > "$TEST_DIR/sample.md" <<'EOF'
+# Sample Markdown
+
+
+This is a test file.
+
+
+With multiple blank lines.
+
+
+For testing the compact optimizer.
+EOF
+fi
+
+TEST_FILES=$(find "$TEST_DIR" -name "sample.*" -type f 2>/dev/null || true)
+FILE_COUNT=$(echo "$TEST_FILES" | wc -w)
+echo "Found $FILE_COUNT test files" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+# Run tests
+echo "Running tests..." | tee -a "$LOG_FILE"
+echo "=================" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+for optimizer in $OPTIMIZERS; do
+    for test_file in $TEST_FILES; do
+        test_optimizer "$optimizer" "$test_file"
+    done
+    echo "" | tee -a "$LOG_FILE"
+done
+
+# Summary
+echo "" | tee -a "$LOG_FILE"
+echo "=== SUMMARY ===" | tee -a "$LOG_FILE"
+echo "Total tests: $TOTAL_TESTS" | tee -a "$LOG_FILE"
+echo "Passed: $PASSED_TESTS" | tee -a "$LOG_FILE"
+echo "Failed: $FAILED_TESTS" | tee -a "$LOG_FILE"
+
+if [[ $TOTAL_INPUT -gt 0 ]]; then
+    TOTAL_SAVED_PCT=$((TOTAL_SAVED * 100 / TOTAL_INPUT))
+    echo "Total input: $TOTAL_INPUT bytes" | tee -a "$LOG_FILE"
+    echo "Total saved: $TOTAL_SAVED bytes ($TOTAL_SAVED_PCT%)" | tee -a "$LOG_FILE"
+fi
+
+echo "" | tee -a "$LOG_FILE"
+echo "Completed: $(date -Iseconds)" | tee -a "$LOG_FILE"
+echo "Log file: $LOG_FILE" | tee -a "$LOG_FILE"
+
+# Exit code
+if [[ $FAILED_TESTS -eq 0 ]]; then
+    echo "" | tee -a "$LOG_FILE"
+    echo "✅ ALL TESTS PASSED" | tee -a "$LOG_FILE"
+    exit 0
+else
+    echo "" | tee -a "$LOG_FILE"
+    echo "❌ SOME TESTS FAILED" | tee -a "$LOG_FILE"
+    exit 1
+fi

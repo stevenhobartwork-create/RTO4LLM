@@ -29,8 +29,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Archive (old development files)
-archive/
 
 # Testing artifacts
 testing/__pycache__/
