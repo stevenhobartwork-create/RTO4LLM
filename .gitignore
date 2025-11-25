@@ -1,0 +1,45 @@
+# Compiled binaries
+src/rto
+*.o
+*.exe
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archive (old development files)
+archive/
+
+# Testing artifacts
+testing/__pycache__/
+testing/reports/
+*.log
+*.tmp
+*.diff
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
