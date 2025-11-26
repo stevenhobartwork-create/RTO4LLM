@@ -53,6 +53,9 @@
 
 High-performance dictionary-based compression that squeezes your **source code and text files** smaller while keeping them **perfectly reversible**. Optimized for LLM ingestion — feed more context to your AI. Still lots of performance left on the table further optimisation, more custom dictionaries.  I intentially removed many of the most common dictionary words from scanning my own data as (1) Privacy , (2) Not universal 
 
+HUmm it seems to be doign some ridiclous things, like increaing the length of a few things ... much optimization still possible. 
+
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  ORIGINAL: 291.5 MB  ──────────────────►  COMPRESSED: 256.9 MB           │
